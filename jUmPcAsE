@@ -1,0 +1,117 @@
+#!/usr/bin/env ruby
+
+require 'getoptlong'
+require 'stringio'
+
+class JumpMachine
+  attr_reader :mode
+
+  def initialize(inverse: false, mode: :default, **__)
+    @mode = mode
+    @upcase = !inverse
+  end
+
+  def call(char)
+    result = upcase? ? char.upcase : char.downcase
+    update(char)
+    result
+  end
+
+  def match?(char)         = send(:"#{mode}_match?", char)
+  def default_match?(char) = char.match?(/[[:alpha:]]/)
+  def naive_match?(char)   = true
+  def random_match?(char)  = rand < 0.5
+  def to_proc              = method(:call).to_proc
+  def upcase?              = @upcase
+
+  def update(char)
+    @upcase ^= match?(char)
+  end
+end
+
+class Clipper
+  class << self
+    def copy(text)
+      system 'wl-copy', text
+      text
+    end
+
+    def run(**opts)
+      clipper = Clipper.new(**opts)
+      yield clipper
+      clipper.copy
+    end
+  end
+
+  attr_writer :buffer
+  attr_writer :clipboard
+  attr_accessor :io
+  attr_accessor :stdout
+
+  def initialize(stdout = $stdout, buffer: false, clipboard: false, **opts)
+    self.buffer    = buffer
+    self.clipboard = clipboard
+    self.stdout    = stdout
+
+    if clipboard?
+      self.io = StringIO.new
+    end
+  end
+
+  def buffer? = @buffer
+  def clipboard? = @clipboard
+
+  def copy(text = nil)
+    return unless clipboard?
+
+    text ||= io.string.strip
+    self.class.copy(text)
+  end
+
+  def puts(line)
+    unless buffer?
+      copy(line)
+    end
+
+    io&.puts(line)
+    stdout.puts(line)
+  end
+
+  def to_proc = method(:puts).to_proc
+end
+
+class String
+  def jumpcase(**opts) = each_char.map(&JumpMachine.new(**opts)).join
+end
+
+opts = GetoptLong.new(
+         ['--buffer',    '-b', GetoptLong::NO_ARGUMENT],
+         ['--clipboard', '-c', GetoptLong::NO_ARGUMENT],
+         ['--invert',    '-i', GetoptLong::NO_ARGUMENT],
+         ['--naive',     '-n', GetoptLong::NO_ARGUMENT],
+         ['--random',    '-r', GetoptLong::NO_ARGUMENT]
+       ).enum_for(:each)
+        .to_h do |key, val|
+           key = key[2..].to_sym
+           case key
+           when :default, :naive, :random
+             [:mode, key]
+           when :invert
+             [:inverse, val]
+           else
+             [key, val]
+           end
+         end
+
+if ARGV.empty?
+  input = opts[:buffer] ? $stdin.read : $stdin
+else
+  input = ARGV.join(' ')
+end
+
+Clipper.run(**opts) do |clipper|
+          input.each_line.lazy
+              .map(&:strip)
+              .map { |l| l.jumpcase(**opts) }
+              .each(&clipper)
+        end
