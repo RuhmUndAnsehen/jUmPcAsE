@@ -127,7 +127,7 @@ end
 
 Clipper.run(**opts) do |clipper|
           input.each_line.lazy
-              .map(&:strip)
-              .map { |l| l.jumpcase(**opts) }
-              .each(&clipper)
+               .map(&:strip)
+               .map { |l| l.jumpcase(**opts) }
+               .each(&clipper)
         end
